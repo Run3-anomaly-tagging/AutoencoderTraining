@@ -1,11 +1,18 @@
 
 import json
 import numpy as np
-from typing import Dict, List, Tuple
-from utils.h5_helpers import load_jets_from_file, save_jets_to_file, count_jets_in_file
+from typing import Tuple
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+parent_dir = os.path.dirname(project_root)
+sys.path.insert(0, parent_dir)
+from AutoencoderTraining.utils.h5_helpers import load_jets_from_file, save_jets_to_file, count_jets_in_file
+config_path_abs = os.path.join(project_root,"configs/dataset_config.json")
+
 
 class JetSampler:
-    def __init__(self, config_path: str = "configs/dataset_config.json"):
+    def __init__(self, config_path: str = config_path_abs):
         with open(config_path, 'r') as f:
             self.config = json.load(f)
         

@@ -6,8 +6,10 @@ parent_dir = os.path.dirname(project_root)
 sys.path.insert(0, parent_dir)
 from AutoencoderTraining.utils.h5_helpers import count_jets_in_file
 
+config_path_abs = os.path.join(project_root,"configs/dataset_config.json")
+print("DEBUG: ", config_path_abs)
 
-def explore_files(config_path: str = "configs/dataset_config.json"):
+def explore_files(config_path: str = config_path_abs):
     """Explore and count jets in all configured files, and scale to first non-empty HT bin."""
     with open(config_path, 'r') as f:
         config = json.load(f)
