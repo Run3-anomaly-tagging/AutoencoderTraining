@@ -5,13 +5,14 @@ from tensorflow import keras
 import h5py
 import os
 import matplotlib.pyplot as plt
-from model import create_image_autoencoder, compile_model
-from utils.h5_helpers import extract_jet_images
+from AutoencoderTraining.training.image_autoencoder.model import create_image_autoencoder, compile_model
+from AutoencoderTraining.utils.h5_helpers import extract_jet_images
+from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
 
 class ImageAutoencoderTrainer:
     def __init__(self, 
-                 data_path: str = "data/merged/merged_qcd_train.h5",
-                 model_save_path: str = "models/image_autoencoder",
+                 data_path: str = DEFAULT_MERGED_QCD_FILE,
+                 model_save_path: str = os.path.join(MODELS_DIR,"image_autoencoder"),
                  compressed_size: int = 6):
         
         self.data_path = data_path
@@ -63,7 +64,7 @@ class ImageAutoencoderTrainer:
         return x_train, x_val
     
     def train(self, 
-              epochs: int = 100,
+              epochs: int = 2,
               batch_size: int = 256,
               validation_split: float = 0.2,
               learning_rate: float = 0.001):
@@ -160,7 +161,7 @@ class ImageAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = ImageAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=100,
+        epochs=10,
         batch_size=256,
         learning_rate=0.001
     )

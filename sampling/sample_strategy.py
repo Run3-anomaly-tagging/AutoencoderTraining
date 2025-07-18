@@ -4,15 +4,12 @@ import numpy as np
 from typing import Tuple
 import os
 import sys
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-parent_dir = os.path.dirname(project_root)
-sys.path.insert(0, parent_dir)
 from AutoencoderTraining.utils.h5_helpers import load_jets_from_file, save_jets_to_file, count_jets_in_file
-config_path_abs = os.path.join(project_root,"configs/dataset_config.json")
+from AutoencoderTraining.paths import DEFAULT_CONFIG_PATH
 
 
 class JetSampler:
-    def __init__(self, config_path: str = config_path_abs):
+    def __init__(self, config_path: str = DEFAULT_CONFIG_PATH):
         with open(config_path, 'r') as f:
             self.config = json.load(f)
         
