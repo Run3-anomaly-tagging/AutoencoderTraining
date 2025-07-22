@@ -16,7 +16,8 @@ class JetDataGenerator(Sequence):
         self.batch_size = batch_size
         self.mode = mode
         self.shuffle = shuffle
-        
+        self.file = None
+    
         with h5py.File(self.filepath, 'r') as f:
             self.n_samples = len(f['Jets'])
 
@@ -33,8 +34,11 @@ class JetDataGenerator(Sequence):
         return int(np.ceil(self.n_samples / self.batch_size))
     
     def __getitem__(self, index):
+        if self.file is None:
+            self.file = h5py.File(self.filepath, 'r')
+
         batch_indices = self.indices[index * self.batch_size:(index + 1) * self.batch_size]
-        
+
         with h5py.File(self.filepath, 'r') as f:
             jets = f['Jets'][sorted(batch_indices)]
 
