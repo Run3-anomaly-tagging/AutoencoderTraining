@@ -6,7 +6,6 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 from model import create_dense_autoencoder, compile_model
-from AutoencoderTraining.utils.h5_helpers import extract_hidden_features
 from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
 from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
 
@@ -67,7 +66,11 @@ class DenseAutoencoderTrainer:
             validation_split: float = 0.2,
             learning_rate: float = 0.001):
         """Train the dense autoencoder."""
-        
+                
+        print("Available devices:")
+        for device in tf.config.list_physical_devices():
+            print(f"  - {device.device_type}: {device.name}")
+
         train_generator, val_generator = self.load_data(validation_split, batch_size)
         
         print("Creating dense autoencoder model...")
@@ -83,7 +86,7 @@ class DenseAutoencoderTrainer:
         
         callbacks = [
             keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(self.model_save_path, 'best_model.keras'),
+                filepath=os.path.join(self.model_save_path, 'best_model.h5'),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -114,7 +117,7 @@ class DenseAutoencoderTrainer:
             verbose=1
         )
         
-        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.keras'))
+        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.h5'))
         
         self.plot_training_history(history)
         
@@ -150,7 +153,7 @@ class DenseAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = DenseAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=10,
-        batch_size=512,
+        epochs=2,
+        batch_size=256,
         learning_rate=0.001
     )

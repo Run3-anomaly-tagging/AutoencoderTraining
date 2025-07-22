@@ -60,6 +60,13 @@ class ImageAutoencoderTrainer:
         return train_generator, val_generator
 
     def train(self, epochs=2, batch_size=256, validation_split=0.2, learning_rate=0.001):
+
+        print("TensorFlow version:", tf.__version__)
+        print("Keras version:", keras.__version__)
+        print("Available devices:")
+        for device in tf.config.list_physical_devices():
+            print(f"  - {device.device_type}: {device.name}")
+
         train_generator, val_generator = self.load_data(validation_split, batch_size)
         
         print("Creating image autoencoder model...")
@@ -77,7 +84,7 @@ class ImageAutoencoderTrainer:
         
         callbacks = [
             keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(self.model_save_path, 'best_model.keras'),
+                filepath=os.path.join(self.model_save_path, 'best_model.h5'),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -107,7 +114,7 @@ class ImageAutoencoderTrainer:
             verbose=1
         )
         
-        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.keras'))
+        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.h5'))
         
         self.plot_training_history(history)
         

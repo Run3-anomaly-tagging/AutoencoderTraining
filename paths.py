@@ -14,5 +14,5 @@ with open(DEFAULT_CONFIG_PATH, 'r') as f:
     config = json.load(f)
     DEFAULT_SIGNAL_FILE = config["signal_samples"]["GluGluHto2B"]["path"]
 
-DENSE_AUTOENCODER_MODEL = os.path.join(MODELS_DIR, "dense_autoencoder", "final_autoencoder.keras")
-IMAGE_AUTOENCODER_MODEL = os.path.join(MODELS_DIR, "image_autoencoder", "final_autoencoder.keras")
+DENSE_AUTOENCODER_MODEL = os.path.join(MODELS_DIR, "dense_autoencoder", "final_autoencoder.h5")
+IMAGE_AUTOENCODER_MODEL = os.path.join(MODELS_DIR, "image_autoencoder", "final_autoencoder.h5")
