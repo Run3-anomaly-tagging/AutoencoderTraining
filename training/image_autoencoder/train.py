@@ -6,8 +6,8 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 from AutoencoderTraining.training.image_autoencoder.model import create_image_autoencoder, compile_model
-from AutoencoderTraining.utils.h5_helpers import extract_jet_images
 from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
+from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
 
 class ImageAutoencoderTrainer:
     def __init__(self, 
@@ -19,79 +19,65 @@ class ImageAutoencoderTrainer:
         self.model_save_path = model_save_path
         self.compressed_size = compressed_size
         
-        # Create model save directory
         os.makedirs(self.model_save_path, exist_ok=True)
-    
-    def load_data(self):
-        """Load and preprocess jet image data."""
-        print("Loading jet image data...")
         
+    def load_data(self, validation_split=0.2, batch_size=256):
+        """Prepare train and validation data generators."""
+        print("Preparing data generators...")
+
+        # Open the file once to get total number of jets
         with h5py.File(self.data_path, 'r') as f:
-            jets = f['Jets'][:]
+            total_samples = len(f['Jets'])
         
-        # Extract jet images
-        jet_images = extract_jet_images(jets)
+        # Create shuffled indices
+        indices = np.random.permutation(total_samples)
+        n_val = int(total_samples * validation_split)
         
-        # Normalize images to [0, 1] range
-        jet_images = jet_images.astype(np.float32)
-        jet_images = (jet_images - jet_images.min()) / (jet_images.max() - jet_images.min())
-        
-        # Add channel dimension for CNN
-        jet_images = np.expand_dims(jet_images, axis=-1)
-        
-        print(f"Loaded {len(jet_images)} jet images")
-        print(f"Image shape: {jet_images.shape[1:]}")
-        print(f"Value range: [{jet_images.min():.3f}, {jet_images.max():.3f}]")
-        
-        return jet_images
-    
-    def split_data(self, jet_images, validation_split=0.2):
-        """Split data into training and validation sets."""
-        n_samples = len(jet_images)
-        n_val = int(n_samples * validation_split)
-        
-        # Random split
-        indices = np.random.permutation(n_samples)
         val_indices = indices[:n_val]
         train_indices = indices[n_val:]
         
-        x_train = jet_images[train_indices]
-        x_val = jet_images[val_indices]
+        print(f"Total samples: {total_samples}")
+        print(f"Training samples: {len(train_indices)}")
+        print(f"Validation samples: {len(val_indices)}")
+
+        # Create generators for train and validation
+        train_generator = JetDataGenerator(
+            self.data_path,
+            indices=train_indices,
+            batch_size=batch_size,
+            shuffle=True,
+            mode='image'
+        )
         
-        print(f"Training samples: {len(x_train)}")
-        print(f"Validation samples: {len(x_val)}")
+        val_generator = JetDataGenerator(
+            self.data_path,
+            indices=val_indices,
+            batch_size=batch_size,
+            shuffle=False,
+            mode='image'
+        )
+
+        return train_generator, val_generator
+
+    def train(self, epochs=2, batch_size=256, validation_split=0.2, learning_rate=0.001):
+        train_generator, val_generator = self.load_data(validation_split, batch_size)
         
-        return x_train, x_val
-    
-    def train(self, 
-              epochs: int = 2,
-              batch_size: int = 256,
-              validation_split: float = 0.2,
-              learning_rate: float = 0.001):
-        """Train the image autoencoder."""
-        
-        # Load data
-        jet_images = self.load_data()
-        x_train, x_val = self.split_data(jet_images, validation_split)
-        
-        # Create model
         print("Creating image autoencoder model...")
+        # Use input shape from the generator's output shape (example: first batch)
+        sample_batch = train_generator[0][0]  # inputs from first batch
         autoencoder, encoder = create_image_autoencoder(
-            input_shape=x_train.shape[1:],
+            input_shape=sample_batch.shape[1:],
             compressed_size=self.compressed_size
         )
         
-        # Compile model
         autoencoder = compile_model(autoencoder, learning_rate)
         
-        # Print model summary
         print("\nAutoencoder Architecture:")
         autoencoder.summary()
         
-        # Callbacks
         callbacks = [
             keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(self.model_save_path, 'best_model.h5'),
+                filepath=os.path.join(self.model_save_path, 'best_model.keras'),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -112,43 +98,38 @@ class ImageAutoencoderTrainer:
             )
         ]
         
-        # Train model
         print("Starting training...")
         history = autoencoder.fit(
-            x_train, x_train,  # Autoencoder: input = output
+            train_generator,
+            validation_data=val_generator,
             epochs=epochs,
-            batch_size=batch_size,
-            validation_data=(x_val, x_val),
             callbacks=callbacks,
             verbose=1
         )
         
-        # Save final model and encoder
-        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.h5'))
-        encoder.save(os.path.join(self.model_save_path, 'final_encoder.h5'))
+        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.keras'))
         
-        # Plot training history
         self.plot_training_history(history)
         
         print(f"Training complete! Models saved to {self.model_save_path}")
         
         return autoencoder, encoder, history
-    
+
     def plot_training_history(self, history):
         """Plot training history."""
         plt.figure(figsize=(12, 4))
         
         plt.subplot(1, 2, 1)
-        plt.plot(history.history['loss'], label='Training Loss')
-        plt.plot(history.history['val_loss'], label='Validation Loss')
+        plt.plot(history.history['loss'][1:], label='Training Loss') #Skip plotting the first epoch
+        plt.plot(history.history['val_loss'][1:], label='Validation Loss')
         plt.title('Model Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
         
         plt.subplot(1, 2, 2)
-        plt.plot(history.history['mae'], label='Training MAE')
-        plt.plot(history.history['val_mae'], label='Validation MAE')
+        plt.plot(history.history['mae'][1:], label='Training MAE')
+        plt.plot(history.history['val_mae'][1:], label='Validation MAE')
         plt.title('Model MAE')
         plt.xlabel('Epoch')
         plt.ylabel('MAE')
@@ -161,7 +142,7 @@ class ImageAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = ImageAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=10,
+        epochs=2,
         batch_size=256,
         learning_rate=0.001
     )

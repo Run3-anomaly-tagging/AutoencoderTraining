@@ -12,10 +12,9 @@ def create_dense_autoencoder(input_dim=256, compressed_size=32):
         compressed_size: Size of compressed representation
     """
     
-    # Encoder
     encoder_input = layers.Input(shape=(input_dim,), name='encoder_input')
-    
-    # Encoder layers
+
+    # Encoder
     x = layers.Dense(128, activation='relu')(encoder_input)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
@@ -38,7 +37,6 @@ def create_dense_autoencoder(input_dim=256, compressed_size=32):
     # Output layer
     decoded = layers.Dense(input_dim, activation='linear', name='decoded')(x)
     
-    # Create autoencoder
     autoencoder = keras.Model(encoder_input, decoded, name='dense_autoencoder')
     
     # Create encoder model for extracting compressed features

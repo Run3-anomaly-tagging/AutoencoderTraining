@@ -6,12 +6,14 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 from model import create_dense_autoencoder, compile_model
-from utils.h5_helpers import extract_hidden_features
+from AutoencoderTraining.utils.h5_helpers import extract_hidden_features
+from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
+from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
 
 class DenseAutoencoderTrainer:
     def __init__(self, 
-                 data_path: str = "data/merged/merged_qcd_train.h5",
-                 model_save_path: str = "models/dense_autoencoder",
+                 data_path: str = DEFAULT_MERGED_QCD_FILE,
+                 model_save_path: str = os.path.join(MODELS_DIR,"dense_autoencoder"),
                  compressed_size: int = 32):
         
         self.data_path = data_path
@@ -21,83 +23,67 @@ class DenseAutoencoderTrainer:
         # Create model save directory
         os.makedirs(self.model_save_path, exist_ok=True)
     
-    def load_data(self):
-        """Load and preprocess hidden feature data."""
-        print("Loading hidden feature data...")
-        
+    def load_data(self, validation_split=0.2, batch_size=256):
+        """Prepare train and validation data generators."""
+        print("Preparing data generators...")
+
+        # Open the file once to get total number of jets
         with h5py.File(self.data_path, 'r') as f:
-            jets = f['Jets'][:]
+            total_samples = len(f['Jets'])
         
-        # Extract hidden features
-        hidden_features = extract_hidden_features(jets)
+        # Create shuffled indices
+        indices = np.random.permutation(total_samples)
+        n_val = int(total_samples * validation_split)
         
-        # Normalize features
-        hidden_features = hidden_features.astype(np.float32)
-        
-        # Standardize features (zero mean, unit variance)
-        mean = np.mean(hidden_features, axis=0)
-        std = np.std(hidden_features, axis=0)
-        std[std == 0] = 1  # Avoid division by zero
-        
-        hidden_features = (hidden_features - mean) / std
-        
-        print(f"Loaded {len(hidden_features)} feature vectors")
-        print(f"Feature dimension: {hidden_features.shape[1]}")
-        print(f"Feature range: [{hidden_features.min():.3f}, {hidden_features.max():.3f}]")
-        
-        # Store normalization parameters
-        self.mean = mean
-        self.std = std
-        
-        return hidden_features
-    
-    def split_data(self, hidden_features, validation_split=0.2):
-        """Split data into training and validation sets."""
-        n_samples = len(hidden_features)
-        n_val = int(n_samples * validation_split)
-        
-        # Random split
-        indices = np.random.permutation(n_samples)
         val_indices = indices[:n_val]
         train_indices = indices[n_val:]
         
-        x_train = hidden_features[train_indices]
-        x_val = hidden_features[val_indices]
+        print(f"Total samples: {total_samples}")
+        print(f"Training samples: {len(train_indices)}")
+        print(f"Validation samples: {len(val_indices)}")
+
+        # Create generators for train and validation
+        train_generator = JetDataGenerator(
+            self.data_path,
+            indices=train_indices,
+            batch_size=batch_size,
+            shuffle=True,
+            mode='hidden'
+        )
         
-        print(f"Training samples: {len(x_train)}")
-        print(f"Validation samples: {len(x_val)}")
-        
-        return x_train, x_val
+        val_generator = JetDataGenerator(
+            self.data_path,
+            indices=val_indices,
+            batch_size=batch_size,
+            shuffle=False,
+            mode='hidden'
+        )
+
+        return train_generator, val_generator
     
     def train(self, 
-              epochs: int = 100,
-              batch_size: int = 512,
-              validation_split: float = 0.2,
-              learning_rate: float = 0.001):
+            epochs: int = 100,
+            batch_size: int = 512,
+            validation_split: float = 0.2,
+            learning_rate: float = 0.001):
         """Train the dense autoencoder."""
         
-        # Load data
-        hidden_features = self.load_data()
-        x_train, x_val = self.split_data(hidden_features, validation_split)
+        train_generator, val_generator = self.load_data(validation_split, batch_size)
         
-        # Create model
         print("Creating dense autoencoder model...")
         autoencoder, encoder = create_dense_autoencoder(
-            input_dim=x_train.shape[1],
+            input_dim=train_generator[0][0].shape[1],  # get input_dim from generator batch shape
             compressed_size=self.compressed_size
         )
         
-        # Compile model
         autoencoder = compile_model(autoencoder, learning_rate)
         
-        # Print model summary
         print("\nAutoencoder Architecture:")
         autoencoder.summary()
         
-        # Callbacks
         callbacks = [
             keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(self.model_save_path, 'best_model.h5'),
+                filepath=os.path.join(self.model_save_path, 'best_model.keras'),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -121,44 +107,37 @@ class DenseAutoencoderTrainer:
         # Train model
         print("Starting training...")
         history = autoencoder.fit(
-            x_train, x_train,  # Autoencoder: input = output
+            train_generator,
             epochs=epochs,
-            batch_size=batch_size,
-            validation_data=(x_val, x_val),
+            validation_data=val_generator,
             callbacks=callbacks,
             verbose=1
         )
         
-        # Save final model and encoder
-        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.h5'))
-        encoder.save(os.path.join(self.model_save_path, 'final_encoder.h5'))
+        autoencoder.save(os.path.join(self.model_save_path, 'final_autoencoder.keras'))
         
-        # Save normalization parameters
-        np.savez(os.path.join(self.model_save_path, 'normalization_params.npz'),
-                 mean=self.mean, std=self.std)
-        
-        # Plot training history
         self.plot_training_history(history)
         
         print(f"Training complete! Models saved to {self.model_save_path}")
         
         return autoencoder, encoder, history
+
     
     def plot_training_history(self, history):
         """Plot training history."""
         plt.figure(figsize=(12, 4))
         
         plt.subplot(1, 2, 1)
-        plt.plot(history.history['loss'], label='Training Loss')
-        plt.plot(history.history['val_loss'], label='Validation Loss')
+        plt.plot(history.history['loss'][1:], label='Training Loss')#Skip the first epoch in plotting
+        plt.plot(history.history['val_loss'][1:], label='Validation Loss')
         plt.title('Model Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
         
         plt.subplot(1, 2, 2)
-        plt.plot(history.history['mae'], label='Training MAE')
-        plt.plot(history.history['val_mae'], label='Validation MAE')
+        plt.plot(history.history['mae'][1:], label='Training MAE')
+        plt.plot(history.history['val_mae'][1:], label='Validation MAE')
         plt.title('Model MAE')
         plt.xlabel('Epoch')
         plt.ylabel('MAE')
@@ -171,7 +150,7 @@ class DenseAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = DenseAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=100,
+        epochs=10,
         batch_size=512,
         learning_rate=0.001
     )
