@@ -2,5 +2,6 @@
 __pycache__/
 models/
 venv/
+venv_v2/
 data/
 evaluation/*png
