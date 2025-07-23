@@ -25,8 +25,20 @@ python sampling/sample_strategy.py
 
 ### 5. Training
 
+```
+python training/dense_autoencoder/train.py 
+python training/image_autoencoder/train.py 
+```
+
 On lpc-gpu nodes needs to be done with apptainer
 
 ```bash
-./run_training_image.sh #Seems to work, but gives a warning, to be checked
+./run_training_image.sh #The warning only concerns the initial directory for singularity image, it does not affect the results
+./run_training_dense.sh
+```
+
+### 6. Evaluation
+
+```bash
+python evaluation/plot_reco_loss.py
 ```

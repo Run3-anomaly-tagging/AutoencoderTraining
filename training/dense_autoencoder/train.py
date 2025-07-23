@@ -153,7 +153,7 @@ class DenseAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = DenseAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=2,
+        epochs=50,
         batch_size=256,
         learning_rate=0.001
     )
