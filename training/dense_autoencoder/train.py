@@ -1,13 +1,16 @@
 
 import numpy as np
 import tensorflow as tf
+tf.get_logger().setLevel('ERROR')
 from tensorflow import keras
 import h5py
 import os
 import matplotlib.pyplot as plt
 from model import create_dense_autoencoder, compile_model
-from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
+from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR, DEFAULT_CONFIG_PATH
 from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
+from AutoencoderTraining.training.auc_callback import AUCMetricCallback
+import json
 
 class DenseAutoencoderTrainer:
     def __init__(self, 
@@ -18,8 +21,7 @@ class DenseAutoencoderTrainer:
         self.data_path = data_path
         self.model_save_path = model_save_path
         self.compressed_size = compressed_size
-        
-        # Create model save directory
+
         os.makedirs(self.model_save_path, exist_ok=True)
     
     def load_data(self, validation_split=0.2, batch_size=256):
@@ -84,19 +86,29 @@ class DenseAutoencoderTrainer:
         print("\nAutoencoder Architecture:")
         autoencoder.summary()
         
+        with open(DEFAULT_CONFIG_PATH, 'r') as f:
+            auc_path = json.load(f)['auc_set']['output_file']
+
+        auc_callback = AUCMetricCallback(
+            auc_dataset_path=auc_path,
+            name='val_auc',
+            feature_key = 'hidNeurons'
+        )
+
         callbacks = [
             keras.callbacks.ModelCheckpoint(
                 filepath=os.path.join(self.model_save_path, 'best_model.h5'),
                 save_best_only=True,
-                monitor='val_loss',
-                mode='min',
+                monitor='val_auc',
+                mode='max',
                 verbose=1
             ),
             keras.callbacks.EarlyStopping(
-                monitor='val_loss',
+                monitor='val_auc',
                 patience=15,
                 restore_best_weights=True,
-                verbose=1
+                verbose=1,
+                mode='max'
             ),
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
@@ -104,7 +116,8 @@ class DenseAutoencoderTrainer:
                 patience=7,
                 min_lr=1e-6,
                 verbose=1
-            )
+            ),
+            auc_callback
         ]
         
         # Train model
@@ -114,6 +127,7 @@ class DenseAutoencoderTrainer:
             epochs=epochs,
             validation_data=val_generator,
             callbacks=callbacks,
+            steps_per_epoch=500,#reducing epoch sizes to finer scan AUC
             verbose=1
         )
         
@@ -125,30 +139,40 @@ class DenseAutoencoderTrainer:
         
         return autoencoder, encoder, history
 
-    
-    def plot_training_history(self, history):
-        """Plot training history."""
-        plt.figure(figsize=(12, 4))
         
-        plt.subplot(1, 2, 1)
-        plt.plot(history.history['loss'][1:], label='Training Loss')#Skip the first epoch in plotting
+    def plot_training_history(self, history):
+        plt.figure(figsize=(18, 4))
+
+        plt.subplot(1, 3, 1)
+        plt.plot(history.history['loss'][1:], label='Training Loss')
         plt.plot(history.history['val_loss'][1:], label='Validation Loss')
         plt.title('Model Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
-        
-        plt.subplot(1, 2, 2)
+
+        plt.subplot(1, 3, 2)
         plt.plot(history.history['mae'][1:], label='Training MAE')
         plt.plot(history.history['val_mae'][1:], label='Validation MAE')
         plt.title('Model MAE')
         plt.xlabel('Epoch')
         plt.ylabel('MAE')
         plt.legend()
-        
+
+        plt.subplot(1, 3, 3)
+        if 'val_auc' in history.history:
+            plt.plot(history.history['val_auc'][1:], label='Validation AUC')
+            plt.title('Validation AUC')
+            plt.xlabel('Epoch')
+            plt.ylabel('AUC')
+            plt.legend()
+        else:
+            print("Warning: val_auc not found in history.")
+
         plt.tight_layout()
-        plt.savefig(os.path.join(self.model_save_path, 'training_history.png'))
+        plt.savefig(os.path.join(self.model_save_path, 'training_history_with_auc.png'))
         plt.show()
+
 
 if __name__ == "__main__":
     trainer = DenseAutoencoderTrainer()

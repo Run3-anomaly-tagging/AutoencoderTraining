@@ -2,8 +2,6 @@
 import json
 import numpy as np
 from typing import Tuple
-import os
-import sys
 from AutoencoderTraining.utils.h5_helpers import load_jets_from_file, save_jets_to_file, count_jets_in_file
 from AutoencoderTraining.paths import DEFAULT_CONFIG_PATH
 

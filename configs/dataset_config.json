@@ -35,6 +35,12 @@
         "xsec": 1.0
       }
     },
+    "auc_set": {
+      "output_file": "data/auc_qcd_H_signal.h5",
+      "n_qcd_jets": 10000,
+      "n_signal_jets": 10000,
+      "signal_samples": ["GluGluHto2B"]
+    },
     "sampling_strategy": "bin-normalized",
     "output_file": "data/merged_qcd_train.h5",
     "max_jets_per_file": 500000
