@@ -1,12 +1,11 @@
 
 import numpy as np
 import tensorflow as tf
-tf.get_logger().setLevel('ERROR')
 from tensorflow import keras
 import h5py
 import os
 import matplotlib.pyplot as plt
-from model import create_dense_autoencoder, compile_model
+from AutoencoderTraining.training.dense_autoencoder.model import create_dense_autoencoder, compile_model
 from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR, DEFAULT_CONFIG_PATH
 from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
 from AutoencoderTraining.training.auc_callback import AUCMetricCallback
@@ -32,7 +31,6 @@ class DenseAutoencoderTrainer:
         with h5py.File(self.data_path, 'r') as f:
             total_samples = len(f['Jets'])
         
-        # Create shuffled indices
         indices = np.random.permutation(total_samples)
         n_val = int(total_samples * validation_split)
         
@@ -62,11 +60,7 @@ class DenseAutoencoderTrainer:
 
         return train_generator, val_generator
     
-    def train(self, 
-            epochs: int = 100,
-            batch_size: int = 512,
-            validation_split: float = 0.2,
-            learning_rate: float = 0.001):
+    def train(self, epochs: int = 100,batch_size: int = 512,validation_split: float = 0.2,learning_rate: float = 0.001):
         """Train the dense autoencoder."""
                 
         print("Available devices:")
@@ -96,6 +90,7 @@ class DenseAutoencoderTrainer:
         )
 
         callbacks = [
+            auc_callback, #Needs to be first so that other callbacks see the val_auc logged!
             keras.callbacks.ModelCheckpoint(
                 filepath=os.path.join(self.model_save_path, 'best_model.h5'),
                 save_best_only=True,
@@ -116,8 +111,7 @@ class DenseAutoencoderTrainer:
                 patience=7,
                 min_lr=1e-6,
                 verbose=1
-            ),
-            auc_callback
+            )
         ]
         
         # Train model
@@ -127,7 +121,7 @@ class DenseAutoencoderTrainer:
             epochs=epochs,
             validation_data=val_generator,
             callbacks=callbacks,
-            steps_per_epoch=500,#reducing epoch sizes to finer scan AUC
+            steps_per_epoch=300,#reducing epoch sizes to finer scan AUC
             verbose=1
         )
         
@@ -170,7 +164,7 @@ class DenseAutoencoderTrainer:
             print("Warning: val_auc not found in history.")
 
         plt.tight_layout()
-        plt.savefig(os.path.join(self.model_save_path, 'training_history_with_auc.png'))
+        plt.savefig(os.path.join(self.model_save_path, 'training_history.png'))
         plt.show()
 
 

@@ -6,8 +6,10 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 from AutoencoderTraining.training.image_autoencoder.model import create_image_autoencoder, compile_model
-from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR
+from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR, DEFAULT_CONFIG_PATH
 from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
+from AutoencoderTraining.training.auc_callback import AUCMetricCallback
+import json
 
 class ImageAutoencoderTrainer:
     def __init__(self, 
@@ -29,7 +31,6 @@ class ImageAutoencoderTrainer:
         with h5py.File(self.data_path, 'r') as f:
             total_samples = len(f['Jets'])
         
-        # Create shuffled indices
         indices = np.random.permutation(total_samples)
         n_val = int(total_samples * validation_split)
         
@@ -61,8 +62,6 @@ class ImageAutoencoderTrainer:
 
     def train(self, epochs=2, batch_size=256, validation_split=0.2, learning_rate=0.001):
 
-        print("TensorFlow version:", tf.__version__)
-        print("Keras version:", keras.__version__)
         print("Available devices:")
         for device in tf.config.list_physical_devices():
             print(f"  - {device.device_type}: {device.name}")
@@ -81,25 +80,36 @@ class ImageAutoencoderTrainer:
         
         print("\nAutoencoder Architecture:")
         autoencoder.summary()
-        
+
+        with open(DEFAULT_CONFIG_PATH, 'r') as f:
+            auc_path = json.load(f)['auc_set']['output_file']
+
+        auc_callback = AUCMetricCallback(
+            auc_dataset_path=auc_path,
+            name='val_auc',
+            feature_key = 'jet_image'
+        )
+
         callbacks = [
+            auc_callback,
             keras.callbacks.ModelCheckpoint(
                 filepath=os.path.join(self.model_save_path, 'best_model.h5'),
                 save_best_only=True,
-                monitor='val_loss',
-                mode='min',
+                monitor='val_auc',
+                mode='max',
                 verbose=1
             ),
             keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=10,
+                monitor='val_auc',
+                patience=30,
                 restore_best_weights=True,
-                verbose=1
+                verbose=1,
+                mode='max'
             ),
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
                 factor=0.5,
-                patience=5,
+                patience=7,
                 min_lr=1e-6,
                 verbose=1
             )
@@ -111,6 +121,7 @@ class ImageAutoencoderTrainer:
             validation_data=val_generator,
             epochs=epochs,
             callbacks=callbacks,
+            steps_per_epoch=10,#reducing epoch sizes to finer scan AUC
             verbose=1
         )
         
@@ -123,10 +134,9 @@ class ImageAutoencoderTrainer:
         return autoencoder, encoder, history
 
     def plot_training_history(self, history):
-        """Plot training history."""
-        plt.figure(figsize=(12, 4))
+        plt.figure(figsize=(18, 4))
         
-        plt.subplot(1, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.plot(history.history['loss'][1:], label='Training Loss') #Skip plotting the first epoch
         plt.plot(history.history['val_loss'][1:], label='Validation Loss')
         plt.title('Model Loss')
@@ -134,13 +144,23 @@ class ImageAutoencoderTrainer:
         plt.ylabel('Loss')
         plt.legend()
         
-        plt.subplot(1, 2, 2)
+        plt.subplot(1, 3, 2)
         plt.plot(history.history['mae'][1:], label='Training MAE')
         plt.plot(history.history['val_mae'][1:], label='Validation MAE')
         plt.title('Model MAE')
         plt.xlabel('Epoch')
         plt.ylabel('MAE')
         plt.legend()
+    
+        plt.subplot(1, 3, 3)
+        if 'val_auc' in history.history:
+            plt.plot(history.history['val_auc'][1:], label='Validation AUC')
+            plt.title('Validation AUC')
+            plt.xlabel('Epoch')
+            plt.ylabel('AUC')
+            plt.legend()
+        else:
+            print("Warning: val_auc not found in history.")
         
         plt.tight_layout()
         plt.savefig(os.path.join(self.model_save_path, 'training_history.png'))
@@ -149,7 +169,7 @@ class ImageAutoencoderTrainer:
 if __name__ == "__main__":
     trainer = ImageAutoencoderTrainer()
     autoencoder, encoder, history = trainer.train(
-        epochs=2,
+        epochs=50,
         batch_size=256,
         learning_rate=0.001
     )
