@@ -102,7 +102,7 @@ class ImageAutoencoderTrainer:
             ),
             keras.callbacks.EarlyStopping(
                 monitor='val_auc',
-                patience=30,
+                patience=15,
                 restore_best_weights=True,
                 verbose=1,
                 mode='max'
@@ -122,7 +122,7 @@ class ImageAutoencoderTrainer:
             validation_data=val_generator,
             epochs=epochs,
             callbacks=callbacks,
-            steps_per_epoch=500,#reducing epoch sizes to finer scan AUC
+            steps_per_epoch=200,#reducing epoch sizes to finer scan AUC
             verbose=1
         )
         
