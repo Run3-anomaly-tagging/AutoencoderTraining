@@ -39,8 +39,11 @@ class AUCMetricCallback(tf.keras.callbacks.Callback):
         for i in range(0, len(x), self.batch_size):
             batch = x[i:i + self.batch_size]
             batch_features = batch[self.feature_key]
+            if batch_features.ndim == 3:  # (batch_size, H, W), add missing channel dim in image input
+                batch_features = np.expand_dims(batch_features, axis=-1)
             recon = self.model.predict(batch_features, verbose=0)
-            errors = np.mean(np.square(batch_features - recon), axis=1)  # MSE as anomaly score
+            errors = np.mean(np.square(batch_features - recon), axis=tuple(range(1, batch_features.ndim)))
+
             preds.extend(errors)
 
         preds = np.array(preds)
@@ -48,4 +51,6 @@ class AUCMetricCallback(tf.keras.callbacks.Callback):
         auc = roc_auc_score(y_true, preds)
         print(f"\nEpoch {epoch + 1} — ROC AUC (QCD vs Signal): {auc:.4f}")
         if logs is not None:
-            logs[self.metric_name] = auc  # Optional: log into history
+            logs[self.metric_name] = auc
+        else:
+            self.model.history.history.setdefault(self.metric_name, []).append(auc)
