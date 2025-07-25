@@ -9,6 +9,7 @@ from AutoencoderTraining.training.image_autoencoder.model import create_image_au
 from AutoencoderTraining.paths import DEFAULT_MERGED_QCD_FILE, MODELS_DIR, DEFAULT_CONFIG_PATH
 from AutoencoderTraining.utils.JetDataGenerator import JetDataGenerator
 from AutoencoderTraining.training.auc_callback import AUCMetricCallback
+#from AutoencoderTraining.training.auc_callback_debug import AUCMetricCallback
 import json
 
 class ImageAutoencoderTrainer:
@@ -121,7 +122,7 @@ class ImageAutoencoderTrainer:
             validation_data=val_generator,
             epochs=epochs,
             callbacks=callbacks,
-            steps_per_epoch=10,#reducing epoch sizes to finer scan AUC
+            steps_per_epoch=500,#reducing epoch sizes to finer scan AUC
             verbose=1
         )
         
