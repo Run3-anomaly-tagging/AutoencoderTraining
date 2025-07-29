@@ -1,5 +1,7 @@
 import json
+import os
 import numpy as np
+import h5py
 from typing import Tuple
 from AutoencoderTraining.utils.h5_helpers import load_jets_from_file, save_jets_to_file, count_jets_in_file
 from AutoencoderTraining.paths import DEFAULT_CONFIG_PATH
@@ -25,7 +27,8 @@ class JetSampler:
         
         # Sort samples by cross-section (descending = lowest HT first)
         sorted_samples = sorted(self.samples.items(), 
-                              key=lambda x: x[1]['xsec'], reverse=True)
+                                key=lambda x: x[1]['xsec'], 
+                                reverse=True)
         
         # Get reference count from lowest HT bin (highest xsec)
         ref_name, ref_info = sorted_samples[0]
@@ -109,21 +112,72 @@ class JetSampler:
         return merged_jets, merged_weights
     
     def sample_data(self) -> None:
-        """Execute the sampling strategy and save results."""
+        """
+        Stream through each input file, sample its jets according to the chosen strategy,
+        and append them (with weights) directly into the output HDF5 file.
+        """
         print(f"Starting data sampling with strategy: {self.sampling_strategy}")
-        
+
+        # Remove existing output file if present
+        try:
+            os.remove(self.output_file)
+        except FileNotFoundError:
+            pass
+
+        # Prepare iteration order and reference info
+        items = list(self.samples.items())
         if self.sampling_strategy == "bin-normalized":
-            jets, weights = self.bin_normalized_sampling()
+            # Sort by descending xsec so the first is the reference
+            sorted_items = sorted(items, key=lambda x: x[1]['xsec'], reverse=True)
+            ref_name, ref_info = sorted_items[0]
+            ref_count = count_jets_in_file(ref_info['path'])
+            ref_count = min(ref_count, self.max_jets_per_file)
+            processing_list = sorted_items
         elif self.sampling_strategy == "weighted-rescaled":
-            jets, weights = self.weighted_rescaled_sampling()
+            # For weights
+            ref_xsec = max(info['xsec'] for info in self.samples.values())
+            processing_list = items
         else:
             raise ValueError(f"Unknown sampling strategy: {self.sampling_strategy}")
-        
-        print(f"\nFinal dataset: {len(jets):,} jets")
-        print(f"Saving to: {self.output_file}")
-        
-        save_jets_to_file(self.output_file, jets, weights)
-        print("Sampling complete!")
+
+        # Open output HDF5 once
+        with h5py.File(self.output_file, "w") as out:
+            for name, info in processing_list:
+                filepath = info['path']
+                xsec = info['xsec']
+
+                if self.sampling_strategy == "bin-normalized":
+                    if name == ref_name:
+                        target_count = ref_count
+                    else:
+                        ratio = xsec / ref_info['xsec']
+                        target_count = max(1, int(ref_count * ratio))
+                    jets = load_jets_from_file(filepath, target_count)
+                    weights = np.ones(len(jets), dtype=np.float32)
+                else:  # weighted-rescaled
+                    jets = load_jets_from_file(filepath, self.max_jets_per_file)
+                    weight_per_jet = (xsec / len(jets)) / (ref_xsec / self.max_jets_per_file)
+                    weights = np.full(len(jets), weight_per_jet, dtype=np.float32)
+
+                print(f"  Appending {len(jets):6d} jets from {name}")
+
+                # Create or append datasets
+                if "jets" not in out:
+                    maxshape = (None,) + jets.shape[1:]
+                    out.create_dataset("jets", data=jets, maxshape=maxshape, chunks=True)
+                    out.create_dataset("weights", data=weights, maxshape=(None,), chunks=True)
+                else:
+                    j_ds = out["jets"]
+                    w_ds = out["weights"]
+                    old_size = j_ds.shape[0]
+                    new_size = old_size + jets.shape[0]
+                    j_ds.resize((new_size,) + jets.shape[1:])
+                    j_ds[old_size:new_size] = jets
+                    w_ds.resize((new_size,))
+                    w_ds[old_size:new_size] = weights
+
+        print("All samples processed and appended. Sampling complete!")
+
 
 if __name__ == "__main__":
     sampler = JetSampler()
