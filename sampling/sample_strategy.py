@@ -118,11 +118,22 @@ class JetSampler:
         """
         print(f"Starting data sampling with strategy: {self.sampling_strategy}")
 
-        # Remove existing output file if present
-        try:
-            os.remove(self.output_file)
-        except FileNotFoundError:
-            pass
+# Remove existing output file if present, after confirmation
+if os.path.exists(self.output_file):
+    while True:
+        resp = input(f"Output file '{self.output_file}' already exists. Remove it? (y/n): ").strip().lower()
+        if resp in ("y", "yes"):
+            try:
+                os.remove(self.output_file)
+                print(f"Removed '{self.output_file}'.")
+            except OSError as e:
+                print(f"Error removing file: {e}")
+            break
+        elif resp in ("n", "no"):
+            print(f"Keeping existing file '{self.output_file}'.")
+            break
+        else:
+            print("Please answer 'y' or 'n'.")
 
         # Prepare iteration order and reference info
         items = list(self.samples.items())
